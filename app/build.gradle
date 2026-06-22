@@ -75,6 +75,17 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            if (releaseSigningAvailable) {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             debuggable = true
@@ -83,17 +94,6 @@ android {
             minifyEnabled = false
             if (releaseSigningAvailable) {
                 signingConfig = signingConfigs.release
-            }
-        }
-    }
-
-    signingConfigs {
-        release {
-            if (releaseSigningAvailable) {
-                storeFile = rootProject.file(releaseStoreFile)
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
             }
         }
     }
