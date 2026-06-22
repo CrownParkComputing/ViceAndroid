@@ -131,7 +131,8 @@ final class C64Native {
         DISK(ViceNative.MediaType.DISK),
         TAPE(ViceNative.MediaType.TAPE),
         CARTRIDGE(ViceNative.MediaType.CARTRIDGE),
-        UNKNOWN(ViceNative.MediaType.UNKNOWN);
+        UNKNOWN(ViceNative.MediaType.UNKNOWN),
+        T64(ViceNative.MediaType.TAPE);
 
         final ViceNative.MediaType delegate;
 

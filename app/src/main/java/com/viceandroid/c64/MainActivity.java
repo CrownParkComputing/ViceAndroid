@@ -79,6 +79,7 @@ public final class MainActivity extends Activity {
     private static final String PREF_BEZEL_GITHUB_URL = "bezel_github_url";
     private static final String PREF_TAPE_AUTOSTART = "tape_autostart";
     private static final String PREF_TAPE_TURBO = "tape_turbo";
+    private static final String PREF_JOY_PORT = "joy_port";
     private static final String PREF_LAST_MEDIA_URI = "last_media_uri";
     private static final String PREF_LAST_MEDIA_NAME = "last_media_name";
     private static final String PREF_LAST_MEDIA_TYPE = "last_media_type";
@@ -228,6 +229,9 @@ public final class MainActivity extends Activity {
     private boolean keyboardVisible;
     private boolean activityPaused;
     private int joystickMask;
+    private int joyPort;
+    private Button portButton;
+    private Button launcherPortButton;
     private int virtualJoystickMask;
     private int gamepadAxisMask;
     private int gamepadButtonMask;
@@ -275,6 +279,7 @@ public final class MainActivity extends Activity {
             gamesFolderUri = Uri.parse(saved);
         }
         aspectMode = prefs.getInt(PREF_ASPECT_MODE, ASPECT_4_3);
+        joyPort = prefs.getInt(PREF_JOY_PORT, 2) == 1 ? 1 : 2;
         crtEnabled = prefs.getBoolean(PREF_CRT_USER_SET, false)
                 && prefs.getBoolean(PREF_CRT_ENABLED, false);
         if (!prefs.getBoolean(PREF_CRT_USER_SET, false) && prefs.contains(PREF_CRT_ENABLED)) {
@@ -437,6 +442,8 @@ public final class MainActivity extends Activity {
         playBar.addView(bezelButton);
         playBar.addView(makeTopButton("Pad", v -> toggleControls()));
         playBar.addView(makeTopButton("Keyb", v -> toggleKeyboard()));
+        portButton = makeTopButton(joyPortLabel(), v -> toggleJoyPort());
+        playBar.addView(portButton);
         playBar.addView(makeTopButton("Settings", v -> toggleSettings()));
         FrameLayout.LayoutParams playBarParams = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -579,6 +586,7 @@ public final class MainActivity extends Activity {
                 1.0f));
         viewButton = makeTopButton("Grid", v -> toggleViewMode());
         searchRow.addView(viewButton);
+        searchRow.addView(makeTopButton("Sort", v -> sortLibraryIntoFolders()));
         screen.addView(searchRow);
 
         mediaStatusView = new TextView(this);
@@ -595,6 +603,7 @@ public final class MainActivity extends Activity {
         addFormatTab("PRG", C64Native.MediaType.PRG);
         addFormatTab("Disk", C64Native.MediaType.DISK);
         addFormatTab("Tape", C64Native.MediaType.TAPE);
+        addFormatTab("T64", C64Native.MediaType.T64);
         addFormatTab("Cart", C64Native.MediaType.CARTRIDGE);
         screen.addView(formatTabs, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -660,6 +669,8 @@ public final class MainActivity extends Activity {
         header.addView(launcherTapeAutostartButton);
         launcherTapeTurboButton = makeTopButton(tapeTurboLabel(), v -> toggleTapeTurbo());
         header.addView(launcherTapeTurboButton);
+        launcherPortButton = makeTopButton(joyPortLabel(), v -> toggleJoyPort());
+        header.addView(launcherPortButton);
 
         View spacer = new View(this);
         header.addView(spacer, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f));
@@ -984,7 +995,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showTapePrompt(String displayName, boolean autostart) {
-        if (tapePromptOverlay == null || currentMediaType != C64Native.MediaType.TAPE) {
+        if (tapePromptOverlay == null || !isTapeLike(currentMediaType)) {
             return;
         }
         String name = displayName == null || displayName.isBlank() ? currentMediaName : displayName;
@@ -1021,7 +1032,7 @@ public final class MainActivity extends Activity {
     }
 
     private void toggleTapePanel() {
-        if (currentMediaType != C64Native.MediaType.TAPE) {
+        if (!isTapeLike(currentMediaType)) {
             return;
         }
         tapePanelVisible = !tapePanelVisible;
@@ -1029,7 +1040,7 @@ public final class MainActivity extends Activity {
     }
 
     private void updateTapePanelVisibility() {
-        boolean available = currentMediaType == C64Native.MediaType.TAPE && overlayControlsVisible;
+        boolean available = isTapeLike(currentMediaType) && overlayControlsVisible;
         if (tapePanelToggleButton != null) {
             tapePanelToggleButton.setVisibility(available ? View.VISIBLE : View.GONE);
             if (available) {
@@ -1197,7 +1208,7 @@ public final class MainActivity extends Activity {
             }
         }
         showTransientOverlayControls();
-        if (currentMediaType == C64Native.MediaType.TAPE) {
+        if (isTapeLike(currentMediaType)) {
             showTapePrompt(null, currentTapeAutostart);
         } else {
             updateDiskButtonVisibility(true);
@@ -1258,7 +1269,7 @@ public final class MainActivity extends Activity {
         if (gamesFolderUri == null) {
             mediaStatusView.setText("No folder selected. Use Folder or Import.");
         } else if (mediaLibrary.isEmpty()) {
-            mediaStatusView.setText("No C64 media found. Supported: PRG, P00, D64, G64, D71, D81, TAP, CRT.");
+            mediaStatusView.setText("No C64 media found. Supported: PRG, P00, D64, G64, D71, D81, TAP, T64, CRT.");
         } else {
             String igdb = igdbService.hasCredentials() ? "IGDB ready" : "IGDB credentials missing";
             String scope = activeFormatFilter == null ? "C64 files" : formatLabel(activeFormatFilter).toLowerCase(Locale.US) + " files";
@@ -1326,6 +1337,8 @@ public final class MainActivity extends Activity {
                 return "Disk";
             case TAPE:
                 return "Tape";
+            case T64:
+                return "T64";
             case CARTRIDGE:
                 return "Cart";
             default:
@@ -1423,7 +1436,7 @@ public final class MainActivity extends Activity {
         Button load = makeCompactButton(loadButtonLabel(entry), null);
         container.addView(load);
         Button attachOnly = null;
-        if (entry.mediaType == C64Native.MediaType.TAPE) {
+        if (isTapeLike(entry.mediaType)) {
             attachOnly = makeCompactButton("Attach Only", null);
             LinearLayout.LayoutParams attachParams = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -1442,7 +1455,7 @@ public final class MainActivity extends Activity {
                 .create();
         final Button attachOnlyButton = attachOnly;
         load.setOnClickListener(v -> {
-            boolean tapeAutostart = entry.mediaType != C64Native.MediaType.TAPE
+            boolean tapeAutostart = !isTapeLike(entry.mediaType)
                     || prefs.getBoolean(PREF_TAPE_AUTOSTART, true);
             dialog.dismiss();
             loadMedia(entry, tapeAutostart);
@@ -1468,16 +1481,18 @@ public final class MainActivity extends Activity {
         if (entry.mediaType == C64Native.MediaType.PRG) {
             return "Load PRG";
         }
-        if (entry.mediaType == C64Native.MediaType.TAPE) {
+        if (entry.mediaType == C64Native.MediaType.TAPE
+                || entry.mediaType == C64Native.MediaType.T64) {
+            String noun = entry.mediaType == C64Native.MediaType.T64 ? "T64" : "Tape";
             return prefs != null && prefs.getBoolean(PREF_TAPE_AUTOSTART, true)
-                    ? "Load Tape (Auto)"
-                    : "Load Tape";
+                    ? "Load " + noun + " (Auto)"
+                    : "Load " + noun;
         }
         return "Load";
     }
 
     private void loadMedia(MediaEntry entry) {
-        loadMedia(entry, entry.mediaType != C64Native.MediaType.TAPE
+        loadMedia(entry, !isTapeLike(entry.mediaType)
                 || prefs.getBoolean(PREF_TAPE_AUTOSTART, true));
     }
 
@@ -1501,10 +1516,11 @@ public final class MainActivity extends Activity {
                             : "Prepared C64 command: " + command);
                     Toast.makeText(this, "Loading " + entry.displayName, Toast.LENGTH_SHORT).show();
                     closeLibrary();
-                    if (launchTarget.mediaType == C64Native.MediaType.TAPE) {
+                    if (isTapeLike(launchTarget.mediaType)) {
                         tapePanelVisible = false;
                         applyTapeTurboPreference();
-                        updateStatus("Tape inserted: " + entry.displayName);
+                        updateStatus((launchTarget.mediaType == C64Native.MediaType.T64 ? "T64" : "Tape")
+                                + " inserted: " + entry.displayName);
                         showTapePrompt(entry.displayName, tapeAutostart);
                     } else {
                         C64Native.setTapeTurbo(false);
@@ -1781,6 +1797,276 @@ public final class MainActivity extends Activity {
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                 | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(intent, REQUEST_IMPORT_MEDIA);
+    }
+
+    private void sortLibraryIntoFolders() {
+        if (gamesFolderUri == null) {
+            updateStatus("Select a games folder before sorting.");
+            Toast.makeText(this, "Select a games folder first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Sort library")
+                .setMessage("Move every recognized C64 media file in this folder into a per-extension "
+                        + "subfolder (D64, T64, TAP, PRG, P00, CRT, ...)? Files already in the correct "
+                        + "subfolder are left in place. This moves files on disk and cannot be undone.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Sort", (d, which) -> organizeLibraryInBackground(gamesFolderUri))
+                .show();
+    }
+
+    private void organizeLibraryInBackground(Uri treeUri) {
+        uiHandler.post(() -> updateStatus("Sorting library into extension folders..."));
+        new Thread(() -> {
+            final int[] result = {0, 0, 0}; // moved, already placed, failed
+            final List<String> dupes = new ArrayList<>();
+            boolean safAttempted = false;
+            try {
+                organizeViaSaf(treeUri, result, dupes);
+                safAttempted = true;
+            } catch (Exception safEx) {
+                safAttempted = false;
+            }
+            // Fall back to direct file ops if SAF produced nothing or was unsupported.
+            if (!safAttempted || (result[0] == 0 && result[1] == 0 && result[2] == 0)) {
+                File root = StoragePathUtils.fileForTreeUri(treeUri);
+                if (root != null && StoragePathUtils.isWritableDirectory(root)) {
+                    java.util.Arrays.fill(result, 0);
+                    dupes.clear();
+                    organizeViaFile(root, root, new HashMap<>(), result, dupes);
+                }
+            }
+            final int moved = result[0], placed = result[1], failed = result[2];
+            uiHandler.post(() -> {
+                if (moved == 0 && placed == 0 && failed == 0) {
+                    updateStatus("Nothing to sort. Select a writable games folder.");
+                } else {
+                    updateStatus("Sorted: " + moved + " moved, " + placed + " already placed, "
+                            + failed + " failed" + (dupes.isEmpty() ? "." : ", " + dupes.size() + " dupes."));
+                    Toast.makeText(this, moved + " files sorted", Toast.LENGTH_SHORT).show();
+                }
+                refreshLibrary();
+                if (!dupes.isEmpty()) {
+                    notifySortDuplicates(dupes);
+                }
+            });
+        }, "ViceC64SortLibrary").start();
+    }
+
+    private void notifySortDuplicates(List<String> dupes) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Duplicate file names were found while sorting and renamed to avoid overwriting:\n\n");
+        int shown = 0;
+        for (String d : dupes) {
+            if (shown >= 30) {
+                sb.append("\n… and ").append(dupes.size() - shown).append(" more.");
+                break;
+            }
+            sb.append(d).append('\n');
+            shown++;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Duplicates found (" + dupes.size() + ")")
+                .setMessage(sb.toString())
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    private void organizeViaSaf(Uri treeUri, int[] result, List<String> dupes) throws Exception {
+        android.content.ContentResolver cr = getContentResolver();
+        String rootId = DocumentsContract.getTreeDocumentId(treeUri);
+        Uri rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId);
+
+        List<String[]> records = new ArrayList<>(); // {childId, parentId, name}
+        collectMediaDocs(treeUri, rootId, records, 0);
+        if (records.isEmpty()) {
+            return; // let caller fall back to file ops
+        }
+
+        Map<String, String> folderDocId = new HashMap<>();
+        Map<String, Set<String>> folderChildren = new HashMap<>();
+
+        for (String[] rec : records) {
+            String folder = extensionFolderName(rec[2]);
+            if (folder == null || folderDocId.containsKey(folder)) {
+                continue;
+            }
+            String existing = findChildDocumentId(treeUri, rootDocUri, folder, true);
+            if (existing == null) {
+                Uri created = DocumentsContract.createDocument(
+                        cr, rootDocUri, DocumentsContract.Document.MIME_TYPE_DIR, folder);
+                existing = DocumentsContract.getDocumentId(created);
+            }
+            folderDocId.put(folder, existing);
+            folderChildren.put(folder, listChildNames(treeUri, existing));
+        }
+
+        for (String[] rec : records) {
+            String folder = extensionFolderName(rec[2]);
+            if (folder == null) {
+                continue;
+            }
+            String targetFolderId = folderDocId.get(folder);
+            if (rec[1].equals(targetFolderId)) {
+                result[1]++; // already inside its extension folder
+                continue;
+            }
+            Set<String> taken = folderChildren.get(folder);
+            String finalName = uniqueName(rec[2], taken);
+            Uri sourceUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rec[0]);
+            try {
+                if (!finalName.equals(rec[2])) {
+                    sourceUri = DocumentsContract.renameDocument(cr, sourceUri, finalName);
+                    dupes.add(folder + "/ " + rec[2] + "  ->  " + finalName);
+                }
+                Uri sourceParentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rec[1]);
+                Uri targetParentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, targetFolderId);
+                Uri moved = DocumentsContract.moveDocument(cr, sourceUri, sourceParentUri, targetParentUri);
+                if (moved != null) {
+                    taken.add(finalName);
+                    result[0]++;
+                } else {
+                    result[2]++;
+                }
+            } catch (Exception ex) {
+                result[2]++;
+            }
+        }
+    }
+
+    private void collectMediaDocs(Uri treeUri, String documentId, List<String[]> out, int depth) {
+        if (depth > MAX_SCAN_DEPTH) {
+            return;
+        }
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId);
+        String[] projection = {
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE
+        };
+        try (Cursor cursor = getContentResolver().query(childrenUri, projection, null, null, null)) {
+            if (cursor == null) {
+                return;
+            }
+            while (cursor.moveToNext()) {
+                String childId = cursor.getString(0);
+                String name = cursor.getString(1);
+                String mime = cursor.getString(2);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    collectMediaDocs(treeUri, childId, out, depth + 1);
+                    continue;
+                }
+                if (mediaTypeForName(name) != C64Native.MediaType.UNKNOWN) {
+                    out.add(new String[]{childId, documentId, name});
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String findChildDocumentId(Uri treeUri, Uri parentDocUri, String name, boolean directory) {
+        String parentDocId = DocumentsContract.getDocumentId(parentDocUri);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId);
+        String[] projection = {
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE
+        };
+        try (Cursor cursor = getContentResolver().query(childrenUri, projection, null, null, null)) {
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    String cid = cursor.getString(0);
+                    String cname = cursor.getString(1);
+                    String cmime = cursor.getString(2);
+                    if (name.equalsIgnoreCase(cname)
+                            && (!directory || DocumentsContract.Document.MIME_TYPE_DIR.equals(cmime))) {
+                        return cid;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private Set<String> listChildNames(Uri treeUri, String folderDocId) {
+        Set<String> names = new HashSet<>();
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, folderDocId);
+        String[] projection = {DocumentsContract.Document.COLUMN_DISPLAY_NAME};
+        try (Cursor cursor = getContentResolver().query(childrenUri, projection, null, null, null)) {
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    names.add(cursor.getString(0));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return names;
+    }
+
+    private void organizeViaFile(File dir, File root, Map<String, Set<String>> taken, int[] result,
+                                 List<String> dupes) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File f : files) {
+            if (f.isDirectory()) {
+                organizeViaFile(f, root, taken, result, dupes);
+                continue;
+            }
+            String folder = extensionFolderName(f.getName());
+            if (folder == null) {
+                continue;
+            }
+            File destDir = new File(root, folder);
+            if (!destDir.exists() && !destDir.mkdirs()) {
+                result[2]++;
+                continue;
+            }
+            Set<String> set = taken.computeIfAbsent(folder, k -> new HashSet<>());
+            if (f.getParentFile() != null && f.getParentFile().equals(destDir)) {
+                result[1]++; // already inside its extension folder
+                continue;
+            }
+            String base = f.getName();
+            String finalName = uniqueName(base, set);
+            if (!finalName.equals(base)) {
+                dupes.add(folder + "/ " + base + "  ->  " + finalName);
+            }
+            File dest = new File(destDir, finalName);
+            if (f.renameTo(dest)) {
+                set.add(finalName);
+                result[0]++;
+            } else {
+                result[2]++;
+            }
+        }
+    }
+
+    private static String extensionFolderName(String name) {
+        if (mediaTypeForName(name) == C64Native.MediaType.UNKNOWN) {
+            return null;
+        }
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 && dot + 1 < name.length()
+                ? name.substring(dot + 1).toUpperCase(Locale.US) : null;
+    }
+
+    private static String uniqueName(String base, Set<String> taken) {
+        if (taken == null || !taken.contains(base)) {
+            return base;
+        }
+        int dot = base.lastIndexOf('.');
+        String stem = dot > 0 ? base.substring(0, dot) : base;
+        String ext = dot > 0 ? base.substring(dot) : "";
+        for (int n = 1; n < 1000; n++) {
+            String candidate = stem + " (" + n + ")" + ext;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
+        return base;
     }
 
     @Override
@@ -2201,7 +2487,7 @@ public final class MainActivity extends Activity {
         boolean enabled = !prefs.getBoolean(PREF_TAPE_AUTOSTART, true);
         prefs.edit().putBoolean(PREF_TAPE_AUTOSTART, enabled).apply();
         currentTapeAutostart = enabled;
-        if (currentMediaType == C64Native.MediaType.TAPE) {
+        if (isTapeLike(currentMediaType)) {
             showTapePrompt(currentMediaName, enabled);
         }
         applyDisplayPreferences();
@@ -2210,7 +2496,7 @@ public final class MainActivity extends Activity {
     private void toggleTapeTurbo() {
         boolean enabled = !prefs.getBoolean(PREF_TAPE_TURBO, false);
         prefs.edit().putBoolean(PREF_TAPE_TURBO, enabled).apply();
-        C64Native.setTapeTurbo(currentMediaType == C64Native.MediaType.TAPE && enabled);
+        C64Native.setTapeTurbo(isTapeLike(currentMediaType) && enabled);
         updateStatus(enabled ? "Tape turbo on." : "Tape turbo off.");
         applyDisplayPreferences();
     }
@@ -3073,6 +3359,9 @@ public final class MainActivity extends Activity {
                 || lower.endsWith(".x64") || lower.endsWith(".d80") || lower.endsWith(".d82")) {
             return C64Native.MediaType.DISK;
         }
+        if (lower.endsWith(".t64")) {
+            return C64Native.MediaType.T64;
+        }
         if (lower.endsWith(".tap")) {
             return C64Native.MediaType.TAPE;
         }
@@ -3080,6 +3369,10 @@ public final class MainActivity extends Activity {
             return C64Native.MediaType.CARTRIDGE;
         }
         return C64Native.MediaType.UNKNOWN;
+    }
+
+    private static boolean isTapeLike(C64Native.MediaType type) {
+        return type == C64Native.MediaType.TAPE || type == C64Native.MediaType.T64;
     }
 
     private void enterImmersiveMode() {
@@ -3193,7 +3486,28 @@ public final class MainActivity extends Activity {
             return;
         }
         joystickMask = nextMask;
-        C64Native.setJoystick(2, joystickMask);
+        C64Native.setJoystick(joyPort, joystickMask);
+    }
+
+    private void toggleJoyPort() {
+        int oldPort = joyPort;
+        joyPort = joyPort == 1 ? 2 : 1;
+        prefs.edit().putInt(PREF_JOY_PORT, joyPort).apply();
+        C64Native.setJoystick(oldPort, 0); // release the previous port so it doesn't stick
+        C64Native.setJoystick(joyPort, joystickMask); // re-push on the new port
+        String label = joyPortLabel();
+        if (portButton != null) {
+            portButton.setText(label);
+        }
+        if (launcherPortButton != null) {
+            launcherPortButton.setText(label);
+        }
+        updateStatus("Joystick port " + joyPort);
+        applyDisplayPreferences();
+    }
+
+    private String joyPortLabel() {
+        return "Port " + joyPort;
     }
 
     private C64Native.C64Key c64KeyForOrdinal(int ordinal) {
