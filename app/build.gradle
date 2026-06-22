@@ -52,6 +52,7 @@ def releaseSigningAvailable = releaseStoreFile != null
 android {
     namespace = "com.viceandroid.c64"
     compileSdk = rootProject.ext.compileSdkVersion
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.viceandroid.c64"
