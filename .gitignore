@@ -1,0 +1,15 @@
+.gradle/
+build/
+local.properties
+keystore.properties
+*.jks
+*.keystore
+play-account.json
+release/
+
+app/build/
+app/.cxx/
+native/
+
+*.iml
+.idea/

@@ -1,0 +1,121 @@
+plugins {
+    id "com.android.application"
+}
+
+import java.util.Properties
+
+def localProps = new Properties()
+def localPropsFile = rootProject.file("local.properties")
+if (localPropsFile.isFile()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+
+def buildConfigString = { value ->
+    def raw = value == null ? "" : value.toString()
+    return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
+def propertyOrEnv = { name ->
+    def value = localProps.getProperty(name)
+    if (value == null || value.toString().isBlank()) {
+        value = System.getenv(name)
+    }
+    return value == null ? null : value.toString()
+}
+
+def versionCodeValue = {
+    def raw = propertyOrEnv("VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "1"
+    return raw.isInteger() ? raw.toInteger() : 1
+}
+
+def versionNameValue = {
+    def raw = propertyOrEnv("VERSION_NAME")
+    if (raw != null && !raw.isBlank()) {
+        return raw.startsWith("v") ? raw.substring(1) : raw
+    }
+    def refName = System.getenv("GITHUB_REF_NAME")
+    if (refName != null && refName.startsWith("v")) {
+        return refName.substring(1)
+    }
+    return "0.1.0"
+}
+
+def releaseStoreFile = propertyOrEnv("ANDROID_KEYSTORE_PATH")
+def releaseStorePassword = propertyOrEnv("ANDROID_KEYSTORE_PASSWORD")
+def releaseKeyAlias = propertyOrEnv("ANDROID_KEY_ALIAS")
+def releaseKeyPassword = propertyOrEnv("ANDROID_KEY_PASSWORD")
+def releaseSigningAvailable = releaseStoreFile != null
+        && releaseStorePassword != null
+        && releaseKeyAlias != null
+        && releaseKeyPassword != null
+
+android {
+    namespace = "com.viceandroid.c64"
+    compileSdk = rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId = "com.viceandroid.c64"
+        minSdk = rootProject.ext.minSdkVersion
+        targetSdk = rootProject.ext.targetSdkVersion
+        versionCode = versionCodeValue()
+        versionName = versionNameValue()
+
+        buildConfigField "String", "IGDB_CLIENT_ID", buildConfigString(propertyOrEnv("IGDB_CLIENT_ID"))
+        buildConfigField "String", "IGDB_CLIENT_SECRET", buildConfigString(propertyOrEnv("IGDB_CLIENT_SECRET"))
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static"
+                cppFlags "-std=c++17 -fexceptions -frtti"
+            }
+        }
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable = true
+        }
+        release {
+            minifyEnabled = false
+            if (releaseSigningAvailable) {
+                signingConfig = signingConfigs.release
+            }
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (releaseSigningAvailable) {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+}
